@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>OpenStreetMap GPS with Directions</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/leaflet-routing-machine/3.2.12/leaflet-routing-machine.css" />
+    <link rel="stylesheet" href="app.css" />
+</head>
+
+<body>
+    <div class="controls">
+        <input id="searchLocation" type="text" placeholder="Search location by name">
+        <button id="searchButton">Get Direction</button>
+        <button id="useCurrentLocation">Use My Location</button>
+    </div>
+    <div id="map" style="height: 500px;"></div>
+    <div id="directions-panel"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+    <script
+        src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-routing-machine/3.2.12/leaflet-routing-machine.min.js"></script>
+
+    <script>
+        const map = L.map('map').setView([51.505, -0.09], 13);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        let startMarker, endMarker, routingControl;
+        let startCoords, endCoords;
+        const directionsPanel = document.getElementById('directions-panel');
+
+        function setupRouting(start, end) {
+            if (routingControl) {
+                map.removeControl(routingControl);
+            }
+
+            routingControl = L.Routing.control({
+                waypoints: [
+                    L.latLng(start[0], start[1]),
+                    L.latLng(end[0], end[1])
+                ],
+                routeWhileDragging: true,
+                showAlternatives: true,
+                lineOptions: {
+                    styles: [
+                        { color: 'blue', opacity: 0.6, weight: 6 }
+                    ]
+                }
+            }).addTo(map);
+        }
+
+        async function geocodeAddress(address) {
+            try {
+                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`);
+                const data = await response.json();
+
+                if (data.length > 0) {
+                    return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+                } else {
+                    alert(`Could not find address: ${address}`);
+                    return null;
+                }
+            } catch (error) {
+                console.error("Geocoding error:", error);
+                alert("Error in geocoding service");
+                return null;
+            }
+        }
+
+        // Main search & route handler
+        document.getElementById('searchButton').addEventListener('click', async function () {
+            const destination = document.getElementById('searchLocation').value;
+
+            if (!destination) {
+                alert("Please enter a location name to search");
+                return;
+            }
+
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(async function (position) {
+                    const currentCoords = [position.coords.latitude, position.coords.longitude];
+
+                    const destinationCoords = await geocodeAddress(destination);
+
+                    if (destinationCoords) {
+                        map.setView(destinationCoords, 13);
+
+                        if (endMarker) map.removeLayer(endMarker);
+                        endMarker = L.marker(destinationCoords).addTo(map)
+                            .bindPopup(`Destination: ${destination}`)
+                            .openPopup();
+
+                        setupRouting(currentCoords, destinationCoords);
+                    }
+                }, function (error) {
+                    console.error("Geolocation error:", error);
+                    alert("Could not get your current location. Please check your browser settings.");
+                });
+            } else {
+                alert("Geolocation is not supported by your browser");
+            }
+        });
+
+        // "Use My Location" button just centers map
+        document.getElementById('useCurrentLocation').addEventListener('click', function () {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    function (position) {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+                        map.setView([lat, lng], 13);
+
+                        if (startMarker) {
+                            map.removeLayer(startMarker);
+                        }
+                        startMarker = L.marker([lat, lng]).addTo(map)
+                            .bindPopup("Your Location")
+                            .openPopup();
+                    },
+                    function (error) {
+                        console.error("Geolocation error:", error);
+                        alert("Could not get your location.");
+                    }
+                );
+            } else {
+                alert("Geolocation not supported by your browser.");
+            }
+        });
+
+        // Try to center map on page load
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                function (position) {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    map.setView([lat, lng], 13);
+
+                    startMarker = L.marker([lat, lng]).addTo(map)
+                        .bindPopup("Your Location")
+                        .openPopup();
+                },
+                function (error) {
+                    console.error("Geolocation error on load:", error);
+                }
+            );
+        }
+    </script>
+</body>
+
+</html>
